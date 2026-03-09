@@ -1,0 +1,18 @@
+Client
+   |
+   v
+API Service (Producer)
+   |
+   |  Publish Event
+   v
+Message Broker
+(Kafka / RabbitMQ)
+   |
+   v
+Worker Consumers
+   |
+   v
+Notification Service
+   |
+   v
+Email / SMS / Push
