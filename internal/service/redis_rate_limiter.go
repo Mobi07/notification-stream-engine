@@ -13,6 +13,7 @@ type redisRateLimiter struct {
 	client *redis.Client
 }
 
+
 func NewRedisRateLimiter(client *redis.Client) RateLimiter {
 	return &redisRateLimiter{client: client}
 }
