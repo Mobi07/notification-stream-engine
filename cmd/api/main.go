@@ -24,9 +24,9 @@ func main() {
 
 	r.POST("/events", eventHandler.PublishEvent)
 
-	logger.Log.Info("server running on :8080")
+	logger.Log.Info("API server running on :8080")
 
 	if err := r.Run(":8080"); err != nil {
-		logger.Log.Fatal("server failed", zap.Error(err))
+		logger.Log.Fatal("API server failed", zap.Error(err))
 	}
 }

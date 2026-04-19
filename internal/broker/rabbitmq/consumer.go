@@ -61,13 +61,11 @@ func StartConsumer(ch *amqp.Channel, queueName string, svc service.NotificationS
 
 			if retryCount >= constants.MaxRetryCount {
 				logger.Log.Warn("max retry exceeded, sending to DLQ", zap.Int("retry_count", retryCount))
-
 				if err := PublishToDLQ(ch, msg); err != nil {
 					logger.Log.Error("failed to publish to DLQ", zap.Error(err))
 					continue
 				}
-
-				_ = msg.Ack(false)
+				msg.Ack(false)
 				continue
 			}
 
@@ -76,7 +74,7 @@ func StartConsumer(ch *amqp.Channel, queueName string, svc service.NotificationS
 				msg.Nack(false, true)
 				continue
 			}
-			_ = msg.Ack(false)
+			msg.Ack(false)
 			continue
 		}
 
@@ -86,7 +84,6 @@ func StartConsumer(ch *amqp.Channel, queueName string, svc service.NotificationS
 	}
 
 	return nil
-
 }
 
 func StartDLQConsumer(ch *amqp.Channel) error {
