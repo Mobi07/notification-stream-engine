@@ -1,0 +1,19 @@
+api:
+  port: ":8080"
+
+rabbitmq:
+  url: "amqp://guest:guest@localhost:5672/"
+  main_queue: "notification_queue"
+  retry_queue: "notification_retry"
+  dlq: "notification_dlq"
+  dlx_exchange: "dlx_exchange"
+
+redis:
+  addr: "localhost:6379"
+
+processing:
+  max_retry_count: 3
+  retry_delay_milliseconds: 5000
+  consumer_timeout_seconds: 5
+  idempotency_processing_ttl_seconds: 30
+  idempotency_completed_ttl_hours: 24

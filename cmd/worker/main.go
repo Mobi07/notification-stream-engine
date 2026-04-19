@@ -1,9 +1,12 @@
 package main
 
 import (
+	"time"
+
+	"github.com/Mobi07/notification-stream-engine.git/config"
 	"github.com/Mobi07/notification-stream-engine.git/internal/broker/rabbitmq"
-	"github.com/Mobi07/notification-stream-engine.git/internal/constants"
 	"github.com/Mobi07/notification-stream-engine.git/internal/delivery"
+	"github.com/Mobi07/notification-stream-engine.git/internal/policy"
 	"github.com/Mobi07/notification-stream-engine.git/internal/service"
 	"github.com/Mobi07/notification-stream-engine.git/internal/service/handlers"
 	"github.com/Mobi07/notification-stream-engine.git/pkg/logger"
@@ -16,9 +19,14 @@ func main() {
 	logger.Init()
 	defer logger.Sync()
 
+	cfg, err := config.Load("config/config.yaml")
+	if err != nil {
+		logger.Log.Fatal("failed to load config", zap.Error(err))
+	}
+
 	logger.Log.Info("Worker service started")
 
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	conn, err := amqp.Dial(cfg.RabbitMQ.URL)
 	if err != nil {
 		logger.Log.Fatal("failed to connect rabbitmq", zap.Error(err))
 	}
@@ -38,12 +46,28 @@ func main() {
 		}
 	}()
 
-	if err = rabbitmq.SetUpQueues(ch); err != nil {
+	queueConfig := rabbitmq.QueueConfig{
+		MainQueue:   cfg.RabbitMQ.MainQueue,
+		RetryQueue:  cfg.RabbitMQ.RetryQueue,
+		DLQ:         cfg.RabbitMQ.DLQ,
+		DLXExchange: cfg.RabbitMQ.DLXExchange,
+		RetryDelay:  time.Duration(cfg.Processing.RetryDelayMilliseconds) * time.Millisecond,
+	}
+
+	processingConfig := policy.ProcessingConfig{
+		MaxRetryCount:            cfg.Processing.MaxRetryCount,
+		RetryDelay:               time.Duration(cfg.Processing.RetryDelayMilliseconds) * time.Millisecond,
+		ConsumerTimeout:          time.Duration(cfg.Processing.ConsumerTimeoutSeconds) * time.Second,
+		IdempotencyProcessingTTL: time.Duration(cfg.Processing.IdempotencyProcessingTTL) * time.Second,
+		IdempotencyCompletedTTL:  time.Duration(cfg.Processing.IdempotencyCompletedTTL) * time.Hour,
+	}
+
+	if err = rabbitmq.SetUpQueues(ch, queueConfig); err != nil {
 		logger.Log.Fatal("failed to start consumer", zap.Error(err))
 	}
 
 	redisClient := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: cfg.Redis.Addr,
 	})
 
 	rateLimiter := service.NewRedisRateLimiter(redisClient)
@@ -53,13 +77,13 @@ func main() {
 		"UserRegistration": handlers.NewUserRegistrationHandler(emailSender, rateLimiter),
 	}
 
-	notificationService := service.NewNotificationService(eventHandlers, idempotencyStore)
+	notificationService := service.NewNotificationService(eventHandlers, idempotencyStore, processingConfig)
 
-	if err := rabbitmq.StartDLQConsumer(ch); err != nil {
+	if err := rabbitmq.StartDLQConsumer(ch, queueConfig.DLQ); err != nil {
 		logger.Log.Fatal("failed to start DLQ consumer", zap.Error(err))
 	}
 
-	if err = rabbitmq.StartConsumer(ch, constants.MainQueueName, notificationService); err != nil {
+	if err = rabbitmq.StartConsumer(ch, queueConfig.MainQueue, queueConfig, processingConfig, notificationService); err != nil {
 		logger.Log.Fatal("failed to start consumer", zap.Error(err))
 	}
 
