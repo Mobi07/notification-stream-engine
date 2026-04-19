@@ -3,9 +3,11 @@ package rabbitmq
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/Mobi07/notification-stream-engine.git/internal/constants"
+	appErrors "github.com/Mobi07/notification-stream-engine.git/internal/errors"
 	"github.com/Mobi07/notification-stream-engine.git/internal/events"
 	"github.com/Mobi07/notification-stream-engine.git/internal/service"
 	"github.com/Mobi07/notification-stream-engine.git/pkg/logger"
@@ -58,6 +60,18 @@ func StartConsumer(ch *amqp.Channel, queueName string, svc service.NotificationS
 
 		if err != nil {
 			logger.Log.Error("event processing failed", zap.String("event_type", event.Type), zap.Error(err))
+
+			var appErr appErrors.AppError
+			if errors.As(err, &appErr) && !appErr.Retryable {
+				logger.Log.Warn("non-retryable error, sending to DLQ", zap.String("event_type", event.Type))
+				if err := PublishToDLQ(ch, msg); err != nil {
+					logger.Log.Error("failed to publish to DLQ", zap.Error(err))
+					msg.Nack(false, true)
+					continue
+				}
+				msg.Ack(false)
+				continue
+			}
 
 			if retryCount >= constants.MaxRetryCount {
 				logger.Log.Warn("max retry exceeded, sending to DLQ", zap.Int("retry_count", retryCount))
