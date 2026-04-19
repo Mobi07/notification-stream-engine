@@ -47,12 +47,13 @@ func main() {
 	})
 
 	rateLimiter := service.NewRedisRateLimiter(redisClient)
+	idempotencyStore := service.NewRedisIdempotencyStore(redisClient)
 	emailSender := delivery.NewEmailSender()
 	eventHandlers := map[string]service.EventHandler{
 		"UserRegistration": handlers.NewUserRegistrationHandler(emailSender, rateLimiter),
 	}
 
-	notificationService := service.NewNotificationService(eventHandlers)
+	notificationService := service.NewNotificationService(eventHandlers, idempotencyStore)
 
 	if err := rabbitmq.StartDLQConsumer(ch); err != nil {
 		logger.Log.Fatal("failed to start DLQ consumer", zap.Error(err))
