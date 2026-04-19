@@ -1,7 +1,6 @@
 package rabbitmq
 
 import (
-	"github.com/Mobi07/notification-stream-engine.git/internal/constants"
 	"github.com/streadway/amqp"
 )
 
@@ -15,10 +14,10 @@ func GetRetryCount(msg amqp.Delivery) int {
 	return 0
 }
 
-func PublishToDLQ(ch *amqp.Channel, msg amqp.Delivery) error {
+func PublishToDLQ(ch *amqp.Channel, dlxExchange, dlqName string, msg amqp.Delivery) error {
 	return ch.Publish(
-		constants.DLXExchange,   
-		constants.DLQName, 
+		dlxExchange,
+		dlqName,
 		false,
 		false,
 		amqp.Publishing{
@@ -30,7 +29,7 @@ func PublishToDLQ(ch *amqp.Channel, msg amqp.Delivery) error {
 	)
 }
 
-func PublishToRetryQueue(ch *amqp.Channel, msg amqp.Delivery, retryCount int) error {
+func PublishToRetryQueue(ch *amqp.Channel, retryQueueName string, msg amqp.Delivery, retryCount int) error {
 	headers := msg.Headers
 	if headers == nil {
 		headers = make(amqp.Table)
@@ -38,8 +37,8 @@ func PublishToRetryQueue(ch *amqp.Channel, msg amqp.Delivery, retryCount int) er
 	headers["x-retry-count"] = int32(retryCount)
 
 	return ch.Publish(
-		"", // default exchange
-		constants.RetryQueueName, 
+		"",
+		retryQueueName,
 		false,
 		false,
 		amqp.Publishing{

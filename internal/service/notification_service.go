@@ -3,17 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/Mobi07/notification-stream-engine.git/internal/errors"
 	"github.com/Mobi07/notification-stream-engine.git/internal/events"
+	"github.com/Mobi07/notification-stream-engine.git/internal/policy"
 	"github.com/Mobi07/notification-stream-engine.git/pkg/logger"
 	"go.uber.org/zap"
-)
-
-const (
-	idempotencyProcessingTTL = 30 * time.Second
-	idempotencyCompletedTTL  = 24 * time.Hour
 )
 
 type EventHandler interface {
@@ -27,12 +22,14 @@ type NotificationService interface {
 type notificationService struct {
 	handlers         map[string]EventHandler
 	idempotencyStore IdempotencyStore
+	processingConfig policy.ProcessingConfig
 }
 
-func NewNotificationService(handlers map[string]EventHandler, idempotencyStore IdempotencyStore) NotificationService {
+func NewNotificationService(handlers map[string]EventHandler, idempotencyStore IdempotencyStore, processingConfig policy.ProcessingConfig) NotificationService {
 	return &notificationService{
 		handlers:         handlers,
 		idempotencyStore: idempotencyStore,
+		processingConfig: processingConfig,
 	}
 }
 
@@ -54,7 +51,7 @@ func (s *notificationService) ProcessEvent(ctx context.Context, event events.Eve
 	}
 
 	idempotencyKey := fmt.Sprintf("idempotency:event:%s", event.ID)
-	status, err := s.idempotencyStore.Acquire(ctx, idempotencyKey, idempotencyProcessingTTL)
+	status, err := s.idempotencyStore.Acquire(ctx, idempotencyKey, s.processingConfig.IdempotencyProcessingTTL)
 	if err != nil {
 		return errors.AppError{
 			Err:       fmt.Errorf("failed to acquire idempotency key: %w", err),
@@ -84,7 +81,7 @@ func (s *notificationService) ProcessEvent(ctx context.Context, event events.Eve
 		return err
 	}
 
-	if err := s.idempotencyStore.MarkCompleted(ctx, idempotencyKey, idempotencyCompletedTTL); err != nil {
+	if err := s.idempotencyStore.MarkCompleted(ctx, idempotencyKey, s.processingConfig.IdempotencyCompletedTTL); err != nil {
 		return errors.AppError{
 			Err:       fmt.Errorf("failed to mark event as completed: %w", err),
 			Retryable: true,

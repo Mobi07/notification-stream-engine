@@ -1,16 +1,25 @@
 package rabbitmq
 
 import (
-	"github.com/Mobi07/notification-stream-engine.git/internal/constants"
+	"time"
+
 	"github.com/Mobi07/notification-stream-engine.git/pkg/logger"
 	"github.com/streadway/amqp"
 	"go.uber.org/zap"
 )
 
-func SetUpQueues(ch *amqp.Channel) error {
+type QueueConfig struct {
+	MainQueue   string
+	RetryQueue  string
+	DLQ         string
+	DLXExchange string
+	RetryDelay  time.Duration
+}
+
+func SetUpQueues(ch *amqp.Channel, cfg QueueConfig) error {
 
 	err := ch.ExchangeDeclare(
-		constants.DLXExchange,
+		cfg.DLXExchange,
 		"direct",
 		true,
 		false,
@@ -24,12 +33,12 @@ func SetUpQueues(ch *amqp.Channel) error {
 	}
 
 	mainArgs := amqp.Table{
-		"x-dead-letter-exchange":    constants.DLXExchange,
-		"x-dead-letter-routing-key": constants.RetryQueueName,
+		"x-dead-letter-exchange":    cfg.DLXExchange,
+		"x-dead-letter-routing-key": cfg.RetryQueue,
 	}
 
 	_, err = ch.QueueDeclare(
-		constants.MainQueueName,
+		cfg.MainQueue,
 		true,
 		false,
 		false,
@@ -42,7 +51,7 @@ func SetUpQueues(ch *amqp.Channel) error {
 	}
 
 	_, err = ch.QueueDeclare(
-		constants.DLQName,
+		cfg.DLQ,
 		true,
 		false,
 		false,
@@ -55,13 +64,13 @@ func SetUpQueues(ch *amqp.Channel) error {
 	}
 
 	retryArgs := amqp.Table{
-		"x-message-ttl":             int32(5000), // 5 sec delay
-		"x-dead-letter-exchange":    "",          // default exchange
-		"x-dead-letter-routing-key": constants.MainQueueName,
+		"x-message-ttl":             int32(cfg.RetryDelay / time.Millisecond),
+		"x-dead-letter-exchange":    "",
+		"x-dead-letter-routing-key": cfg.MainQueue,
 	}
 
 	_, err = ch.QueueDeclare(
-		constants.RetryQueueName,
+		cfg.RetryQueue,
 		true,
 		false,
 		false,
@@ -74,21 +83,21 @@ func SetUpQueues(ch *amqp.Channel) error {
 	}
 
 	err = ch.QueueBind(
-		constants.RetryQueueName,
-		constants.RetryQueueName,
-		constants.DLXExchange,
+		cfg.RetryQueue,
+		cfg.RetryQueue,
+		cfg.DLXExchange,
 		false,
 		nil,
-	) 
+	)
 	if err != nil {
 		logger.Log.Error("failed to Bind Retry Queue", zap.Error(err))
 		return err
 	}
 
 	err = ch.QueueBind(
-		constants.DLQName,
-		constants.DLQName,
-		constants.DLXExchange,
+		cfg.DLQ,
+		cfg.DLQ,
+		cfg.DLXExchange,
 		false,
 		nil,
 	)
